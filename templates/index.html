@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SENTINEL-X — Worker Safety & IoT Telemetry</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Emergency Flashing Strobe Banner (Visible when SOS button is PRESSED) -->
+    <div class="emergency-strobe-banner" id="emergencyBanner" style="display: none;">
+        <div class="strobe-content">
+            <span class="strobe-icon">🚨</span>
+            <span class="strobe-text">CRITICAL EMERGENCY TRIGGERED — WORKER SOS PUSH BUTTON PRESSED (GPIO 27)</span>
+            <span class="strobe-icon">🚨</span>
+        </div>
+    </div>
+
+    <div class="sentinel-app">
+        <!-- Top Industrial Header -->
+        <header class="header">
+            <div class="brand-group">
+                <div class="brand-logo">
+                    <span class="shield-icon">🛡️</span>
+                    <span class="beacon"></span>
+                </div>
+                <div>
+                    <div class="brand-title">SENTINEL<span class="brand-accent">-X</span></div>
+                    <div class="brand-subtitle">INDUSTRIAL WORKER SAFETY & ENVIRONMENTAL TELEMETRY</div>
+                </div>
+            </div>
+
+            <div class="header-status-panel">
+                <div class="status-pill" id="usbStatusBadge">
+                    <span class="pulse-indicator" id="usbPulse"></span>
+                    <span class="pill-label">ESP32 LINK:</span>
+                    <span class="pill-value" id="usbStatusText">CONNECTING...</span>
+                </div>
+                <div class="status-pill">
+                    <span class="pill-label">PORT:</span>
+                    <span class="pill-value highlight" id="activePortText">COM5</span>
+                </div>
+                <div class="status-pill">
+                    <span class="pill-label">UPTIME:</span>
+                    <span class="pill-value" id="uptimeDisplay">--:--:--</span>
+                </div>
+                <div class="status-pill">
+                    <span class="pill-label">LAST PING:</span>
+                    <span class="pill-value" id="lastSeenDisplay">--</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Configuration & Hardware Bar -->
+        <div class="toolbar">
+            <div class="toolbar-section">
+                <label for="portSelect">SERIAL COM PORT</label>
+                <div class="select-wrapper">
+                    <select id="portSelect">
+                        <option value="COM5" selected>COM5</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="toolbar-section">
+                <label for="baudSelect">BAUD RATE</label>
+                <div class="select-wrapper">
+                    <select id="baudSelect">
+                        <option value="115200" selected>115200</option>
+                        <option value="9600">9600</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="toolbar-actions">
+                <button id="btnRefreshPorts" class="btn btn-secondary" title="Scan for newly connected COM ports">
+                    ↻ Refresh Ports
+                </button>
+                <button id="btnApplyConfig" class="btn btn-primary">
+                    Switch Port
+                </button>
+            </div>
+
+            <div class="motion-summary-badge" id="motionStatusBadge">
+                <span class="motion-icon" id="motionIcon">●</span>
+                <span class="motion-label" id="motionLabel">WORKER STATE: MONITORING</span>
+            </div>
+        </div>
+
+        <!-- Telemetry Main Grid -->
+        <main class="dashboard-grid">
+            
+            <!-- 1. Temperature Card -->
+            <div class="card metric-card" id="cardTemp">
+                <div class="card-header">
+                    <span class="card-title">TEMPERATURE</span>
+                    <span class="sensor-badge" id="dhtTempBadge">DHT22 OK</span>
+                </div>
+                <div class="card-body">
+                    <div class="metric-main">
+                        <span class="metric-number" id="tempVal">--</span>
+                        <span class="metric-unit">°C</span>
+                    </div>
+                    <div class="metric-gauge-track">
+                        <div class="metric-gauge-fill" id="tempGauge" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-footer">
+                        <span>Range: -40 to 80 °C</span>
+                        <span id="tempStatus">Optimal</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Humidity Card -->
+            <div class="card metric-card" id="cardHumidity">
+                <div class="card-header">
+                    <span class="card-title">RELATIVE HUMIDITY</span>
+                    <span class="sensor-badge" id="dhtHumBadge">DHT22 OK</span>
+                </div>
+                <div class="card-body">
+                    <div class="metric-main">
+                        <span class="metric-number" id="humVal">--</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="metric-gauge-track">
+                        <div class="metric-gauge-fill hum-fill" id="humGauge" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-footer">
+                        <span>Target: 30% - 65% RH</span>
+                        <span id="humStatus">Normal</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Motion & Acceleration Magnitude Card -->
+            <div class="card metric-card" id="cardMotion">
+                <div class="card-header">
+                    <span class="card-title">ACCELERATION MAGNITUDE</span>
+                    <span class="sensor-badge" id="mpuStatusBadge">MPU6050 OK</span>
+                </div>
+                <div class="card-body">
+                    <div class="metric-main">
+                        <span class="metric-number" id="magVal">--</span>
+                        <span class="metric-unit">g</span>
+                    </div>
+                    <div class="metric-gauge-track">
+                        <div class="metric-gauge-fill motion-fill" id="magGauge" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-footer">
+                        <span id="motionSubText">Dynamic Δ: -- g</span>
+                        <span class="state-chip" id="stateChip">STATIONARY</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Inertial Vector Breakdown (MPU6050) -->
+            <div class="card vector-card">
+                <div class="card-header">
+                    <span class="card-title">INERTIAL DYNAMICS (MPU6050)</span>
+                    <span class="tech-tag">I2C 0x68</span>
+                </div>
+                <div class="card-body vectors-container">
+                    <div class="vector-group">
+                        <div class="vector-title">ACCELERATION (m/s²)</div>
+                        <div class="vector-items">
+                            <div class="vector-item"><span>X:</span><strong id="axVal">--</strong></div>
+                            <div class="vector-item"><span>Y:</span><strong id="ayVal">--</strong></div>
+                            <div class="vector-item"><span>Z:</span><strong id="azVal">--</strong></div>
+                        </div>
+                    </div>
+                    <div class="vector-group">
+                        <div class="vector-title">GYROSCOPE (rad/s)</div>
+                        <div class="vector-items">
+                            <div class="vector-item"><span>X:</span><strong id="gxVal">--</strong></div>
+                            <div class="vector-item"><span>Y:</span><strong id="gyVal">--</strong></div>
+                            <div class="vector-item"><span>Z:</span><strong id="gzVal">--</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. Live MQ-135 Air Quality Sensor Card -->
+            <div class="card metric-card" id="cardGas">
+                <div class="card-header">
+                    <span class="card-title">MQ-135 AIR QUALITY</span>
+                    <span class="sensor-badge" id="gasBadge">ANALOG GPIO 34</span>
+                </div>
+                <div class="card-body">
+                    <div class="metric-main">
+                        <span class="metric-number" id="gasVal">--</span>
+                        <span class="metric-unit">ADC</span>
+                    </div>
+                    <div class="metric-gauge-track">
+                        <div class="metric-gauge-fill gas-fill" id="gasGauge" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-footer">
+                        <span id="gasVoltageText">Voltage: -- V</span>
+                        <span class="state-chip" id="gasStatusChip">NOMINAL</span>
+                    </div>
+                    <div class="uncalibrated-disclaimer">
+                        * Relative demo reading (uncalibrated concentration)
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. Live Worker SOS Emergency Card -->
+            <div class="card metric-card emergency-card" id="cardEmergency">
+                <div class="card-header">
+                    <span class="card-title">WORKER SOS TRIGGER</span>
+                    <span class="sensor-badge" id="sosBadge">GPIO 27</span>
+                </div>
+                <div class="card-body">
+                    <div class="metric-main">
+                        <span class="emergency-icon-display" id="sosIcon">🔘</span>
+                        <span class="metric-number emergency-state" id="sosStatusText">STANDBY</span>
+                    </div>
+                    <div class="metric-footer">
+                        <span id="sosModeText">Pull-up Active (LOW=Trigger)</span>
+                        <span class="state-chip" id="sosChip">NORMAL</span>
+                    </div>
+                    <div class="buzzer-status-note">
+                        🔊 Buzzer: GPIO 26 (Reserved for future 12V driver)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Chart 1: Environmental Telemetry -->
+            <div class="card chart-card">
+                <div class="card-header">
+                    <span class="card-title">ENVIRONMENTAL TREND (TEMP & HUMIDITY)</span>
+                    <span class="chart-rate">500ms Interval</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="envChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Live Chart 2: Motion Dynamics & Gas Reading -->
+            <div class="card chart-card">
+                <div class="card-header">
+                    <span class="card-title">DYNAMIC ACCELERATION & AIR QUALITY TREND</span>
+                    <span class="chart-rate">Real-time (g / ADC)</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="motionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Live Serial Stream & Safety Event Logs -->
+            <div class="card logs-card">
+                <div class="card-header">
+                    <div class="logs-header-tabs">
+                        <span class="card-title">SYSTEM EVENTS & SERIAL STREAM</span>
+                        <span class="log-count" id="logCounter">0 logs</span>
+                        <span class="db-indicator" id="dbIndicator">💾 SQLite Sync Active</span>
+                    </div>
+                    <div class="logs-actions">
+                        <button id="btnClearLogs" class="btn btn-xs">Clear Console</button>
+                    </div>
+                </div>
+                <div class="terminal-container" id="terminalStream">
+                    <div class="term-row sys">[SENTINEL-X] Console initialized. Listening for ESP32 packets...</div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
